@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 
 class AIService {
 
-  static const String apiKey = "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";
+  static const String apiKey = "";
 
   static const String endpoint =
       "https://api.groq.com/openai/v1/chat/completions";
