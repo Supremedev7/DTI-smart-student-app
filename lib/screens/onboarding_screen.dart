@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import '../services/storage_service.dart';
+import '../utils/app_strings.dart';
 import 'main_navigation.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -13,7 +15,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
 
-  // Form Controllers for the Sign Up page
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
 
@@ -35,10 +36,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       return;
     }
 
-    // Save the user data to Hive!
     StorageService.saveUserDetails(name, email);
 
-    // Navigate to the main app, removing the onboarding screen from the backstack
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (context) => const MainNavigation()),
@@ -48,105 +47,120 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Skip button
-            if (_currentPage < 2)
-              Align(
-                alignment: Alignment.topRight,
-                child: TextButton(
-                  onPressed: () => _pageController.jumpToPage(2),
-                  child: Text("Skip", style: TextStyle(color: Colors.grey.shade600)),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = Theme.of(context).scaffoldBackgroundColor;
+    final titleColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final descColor = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
+
+    return ValueListenableBuilder(
+      valueListenable: Hive.box('userBox').listenable(),
+      builder: (context, box, child) {
+        return Scaffold(
+          backgroundColor: bgColor,
+          body: SafeArea(
+            child: Column(
+              children: [
+                if (_currentPage < 2)
+                  Align(
+                    alignment: Alignment.topRight,
+                    child: TextButton(
+                      onPressed: () => _pageController.jumpToPage(2),
+                      child: Text(AppStrings.get("skip"), style: TextStyle(color: descColor)),
+                    ),
+                  )
+                else
+                  const SizedBox(height: 48),
+
+                Expanded(
+                  child: PageView(
+                    controller: _pageController,
+                    onPageChanged: (index) {
+                      setState(() {
+                        _currentPage = index;
+                      });
+                    },
+                    children: [
+                      _buildSlide(
+                        icon: Icons.school_rounded,
+                        color: const Color(0xFF4F46E5),
+                        title: AppStrings.get("welcome_title"),
+                        description: AppStrings.get("welcome_desc"),
+                        titleColor: titleColor,
+                        descColor: descColor,
+                      ),
+                      _buildSlide(
+                        icon: Icons.auto_awesome_rounded,
+                        color: const Color(0xFF10B981),
+                        title: AppStrings.get("study_smarter_title"),
+                        description: AppStrings.get("study_smarter_desc"),
+                        titleColor: titleColor,
+                        descColor: descColor,
+                      ),
+                      _buildAuthSlide(titleColor, descColor),
+                    ],
+                  ),
                 ),
-              )
-            else
-              const SizedBox(height: 48), // Spacer to maintain layout when Skip is hidden
 
-            // Page View
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                onPageChanged: (index) {
-                  setState(() {
-                    _currentPage = index;
-                  });
-                },
-                children: [
-                  _buildSlide(
-                    icon: Icons.school_rounded,
-                    color: const Color(0xFF4F46E5),
-                    title: "Welcome to\nSmart Student",
-                    description: "Your AI-powered study companion. Let's make learning easier, faster, and much more fun.",
-                  ),
-                  _buildSlide(
-                    icon: Icons.auto_awesome_rounded,
-                    color: const Color(0xFF10B981),
-                    title: "Study Smarter,\nNot Harder",
-                    description: "Upload your PDFs or notes to instantly generate summaries, flashcards, and quizzes.",
-                  ),
-                  _buildAuthSlide(),
-                ],
-              ),
-            ),
-
-            // Bottom Navigation / Indicator Area
-            Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                children: [
-                  // Dot Indicators
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(
-                      3,
-                      (index) => AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        height: 8,
-                        width: _currentPage == index ? 24 : 8,
-                        decoration: BoxDecoration(
-                          color: _currentPage == index ? const Color(0xFF4F46E5) : Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(4),
+                Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(
+                          3,
+                          (index) => AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
+                            margin: const EdgeInsets.symmetric(horizontal: 4),
+                            height: 8,
+                            width: _currentPage == index ? 24 : 8,
+                            decoration: BoxDecoration(
+                              color: _currentPage == index ? const Color(0xFF4F46E5) : Colors.grey.shade300,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  
-                  // Action Button
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: _currentPage == 2 ? _submitAuth : _nextPage,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF4F46E5),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                      const SizedBox(height: 32),
+                      
+                      SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: ElevatedButton(
+                          onPressed: _currentPage == 2 ? _submitAuth : _nextPage,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF4F46E5),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            elevation: 0,
+                          ),
+                          child: Text(
+                            _currentPage == 2 ? AppStrings.get("get_started") : AppStrings.get("continue_btn"),
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
                         ),
-                        elevation: 0,
                       ),
-                      child: Text(
-                        _currentPage == 2 ? "Get Started" : "Continue",
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                    ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      }
     );
   }
 
-  // Helper for static presentation slides
-  Widget _buildSlide({required IconData icon, required Color color, required String title, required String description}) {
+  Widget _buildSlide({
+    required IconData icon, 
+    required Color color, 
+    required String title, 
+    required String description,
+    required Color titleColor,
+    required Color descColor,
+  }) {
     return Padding(
       padding: const EdgeInsets.all(32.0),
       child: Column(
@@ -164,11 +178,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           Text(
             title,
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.bold,
               height: 1.2,
-              color: Color(0xFF0F172A),
+              color: titleColor,
             ),
           ),
           const SizedBox(height: 16),
@@ -177,7 +191,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 16,
-              color: Colors.grey.shade600,
+              color: descColor,
               height: 1.5,
             ),
           ),
@@ -186,38 +200,38 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  // The final slide with the authentication form
-  Widget _buildAuthSlide() {
+  Widget _buildAuthSlide(Color titleColor, Color descColor) {
     return Padding(
       padding: const EdgeInsets.all(32.0),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            "Create Account",
+          Text(
+            AppStrings.get("create_account"),
             style: TextStyle(
               fontSize: 32,
               fontWeight: FontWeight.bold,
-              color: Color(0xFF0F172A),
+              color: titleColor,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            "Sign up to save your progress, decks, and study streaks.",
+            AppStrings.get("signup_desc"),
             style: TextStyle(
               fontSize: 16,
-              color: Colors.grey.shade600,
+              color: descColor,
             ),
           ),
           const SizedBox(height: 40),
           
-          // Name Field
           TextField(
             controller: _nameController,
+            style: TextStyle(color: titleColor),
             decoration: InputDecoration(
-              labelText: "Your Name",
-              prefixIcon: const Icon(Icons.person_outline_rounded),
+              labelText: AppStrings.get("your_name"),
+              labelStyle: TextStyle(color: descColor),
+              prefixIcon: Icon(Icons.person_outline_rounded, color: descColor),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
                 borderSide: BorderSide(color: Colors.grey.shade300),
@@ -234,13 +248,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
           const SizedBox(height: 16),
           
-          // Email Field
           TextField(
             controller: _emailController,
+            style: TextStyle(color: titleColor),
             keyboardType: TextInputType.emailAddress,
             decoration: InputDecoration(
-              labelText: "Email Address (Optional)",
-              prefixIcon: const Icon(Icons.email_outlined),
+              labelText: AppStrings.get("email_optional"),
+              labelStyle: TextStyle(color: descColor),
+              prefixIcon: Icon(Icons.email_outlined, color: descColor),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
                 borderSide: BorderSide(color: Colors.grey.shade300),

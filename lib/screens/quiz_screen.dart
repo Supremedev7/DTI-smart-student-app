@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 import '../services/ai_service.dart';
 import '../services/storage_service.dart';
 import '../widgets/quiz_card.dart';
+import '../utils/app_strings.dart';
 
 class QuizScreen extends StatefulWidget {
   final String? initialText;
@@ -38,7 +40,11 @@ class _QuizScreenState extends State<QuizScreen> {
     final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ["pdf"]);
     if (result == null) return;
 
-    setState(() { loading = true; loadingStatus = "Extracting text from PDF..."; FocusScope.of(context).unfocus(); });
+    setState(() { 
+      loading = true; 
+      loadingStatus = "Extracting text from PDF..."; 
+      FocusScope.of(context).unfocus(); 
+    });
 
     try {
       final path = result.files.single.path!;
@@ -59,7 +65,12 @@ class _QuizScreenState extends State<QuizScreen> {
   Future<void> generateQuiz({bool isFromPdf = false}) async {
     if (controller.text.isEmpty && !isFromPdf) return;
 
-    setState(() { loading = true; loadingStatus = "AI is writing your quiz..."; FocusScope.of(context).unfocus(); questions = []; });
+    setState(() { 
+      loading = true; 
+      loadingStatus = AppStrings.get("ai_writing_quiz");
+      FocusScope.of(context).unfocus(); 
+      questions = []; 
+    });
 
     try {
       String result = await AIService.generateQuiz(controller.text);
@@ -88,7 +99,6 @@ class _QuizScreenState extends State<QuizScreen> {
         }
       }
       
-      // Track Generation
       StorageService.addRecentActivity("Generated Quiz", "${parsed.length} Questions", "quiz");
 
       setState(() {
@@ -102,14 +112,14 @@ class _QuizScreenState extends State<QuizScreen> {
     }
   }
 
-  Widget _buildQuizArea() {
+  Widget _buildQuizArea(Color textColor) {
     if (loading) {
       return Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const CircularProgressIndicator(color: Color(0xFFEC4899)),
           const SizedBox(height: 20),
-          Text(loadingStatus, style: TextStyle(color: Colors.grey.shade600, fontSize: 16, fontWeight: FontWeight.w500)),
+          Text(loadingStatus, style: TextStyle(color: textColor, fontSize: 16, fontWeight: FontWeight.w500)),
         ],
       );
     }
@@ -118,9 +128,9 @@ class _QuizScreenState extends State<QuizScreen> {
       return Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.quiz_outlined, size: 80, color: Colors.grey.shade300),
+          Icon(Icons.quiz_outlined, size: 80, color: Colors.grey.withOpacity(0.5)),
           const SizedBox(height: 16),
-          Text("No quiz generated yet", style: TextStyle(color: Colors.grey.shade500, fontSize: 18)),
+          Text(AppStrings.get("empty_quiz"), style: TextStyle(color: textColor, fontSize: 18)),
         ],
       );
     }
@@ -133,7 +143,6 @@ class _QuizScreenState extends State<QuizScreen> {
         setState(() { 
           questionsRemaining--; 
           if(questionsRemaining == 0) {
-            // Reward XP and increment stats when completed
             StorageService.addXP(50);
             StorageService.incrementQuizzes();
             StorageService.addRecentActivity("Completed Quiz", "Earned 50 XP", "quiz");
@@ -150,46 +159,94 @@ class _QuizScreenState extends State<QuizScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        title: const Text("Study Quiz", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: widget.initialText != null ? IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded), onPressed: () => Navigator.pop(context)) : null,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            TextField(
-              controller: controller,
-              maxLines: 3,
-              decoration: InputDecoration(
-                hintText: "Paste notes or upload a PDF to generate a quiz...",
-                filled: true, fillColor: Colors.white,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                contentPadding: const EdgeInsets.all(16),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = Theme.of(context).scaffoldBackgroundColor;
+    final cardColor = Theme.of(context).cardColor;
+    final titleColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final textColor = isDark ? Colors.grey.shade300 : const Color(0xFF334155);
+    final borderColor = isDark ? Colors.grey.shade800 : Colors.grey.shade200;
+
+    return ValueListenableBuilder(
+      valueListenable: Hive.box('userBox').listenable(),
+      builder: (context, box, child) {
+        return Scaffold(
+          backgroundColor: bgColor,
+          appBar: AppBar(
+            title: Text(AppStrings.get("study_quiz"), style: TextStyle(fontWeight: FontWeight.bold, color: titleColor)),
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            iconTheme: IconThemeData(color: titleColor),
+            leading: widget.initialText != null ? IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded), onPressed: () => Navigator.pop(context)) : null,
+          ),
+          body: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
               children: [
-                Expanded(flex: 1, child: OutlinedButton.icon(onPressed: loading ? null : pickAndExtractPDF, icon: const Icon(Icons.picture_as_pdf_rounded, color: Color(0xFFEF4444)), label: const Text("PDF"), style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), backgroundColor: Colors.white, side: BorderSide(color: Colors.grey.shade300), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))))),
-                const SizedBox(width: 12),
-                Expanded(flex: 2, child: ElevatedButton.icon(onPressed: loading ? null : () => generateQuiz(), icon: loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.auto_awesome), label: Text(loading ? "Working..." : "Generate Quiz"), style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), backgroundColor: const Color(0xFFEC4899), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))))),
+                TextField(
+                  controller: controller,
+                  maxLines: 3,
+                  style: TextStyle(color: textColor),
+                  decoration: InputDecoration(
+                    hintText: AppStrings.get("paste_quiz"),
+                    hintStyle: TextStyle(color: Colors.grey.shade500),
+                    filled: true, 
+                    fillColor: cardColor,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                    contentPadding: const EdgeInsets.all(16),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 1, 
+                      child: OutlinedButton.icon(
+                        onPressed: loading ? null : pickAndExtractPDF, 
+                        icon: const Icon(Icons.picture_as_pdf_rounded, color: Color(0xFFEF4444)), 
+                        label: Text(AppStrings.get("pdf_btn"), style: TextStyle(color: titleColor)), 
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14), 
+                          backgroundColor: cardColor, 
+                          side: BorderSide(color: borderColor), 
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                        )
+                      )
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2, 
+                      child: ElevatedButton.icon(
+                        onPressed: loading ? null : () => generateQuiz(), 
+                        icon: loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.auto_awesome), 
+                        label: Text(loading ? AppStrings.get("working") : AppStrings.get("generate_quiz")), 
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14), 
+                          backgroundColor: const Color(0xFFEC4899), 
+                          foregroundColor: Colors.white, 
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                        )
+                      )
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 30),
+                Expanded(child: Center(child: _buildQuizArea(textColor))),
+                
+                if (!loading && questions.isNotEmpty && questionsRemaining > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 20.0), 
+                    child: Text("$questionsRemaining ${AppStrings.get("questions_remaining")}", style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.w600))
+                  ),
+                if (!loading && questions.isNotEmpty && questionsRemaining == 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 20.0), 
+                    child: Text(AppStrings.get("quiz_completed"), style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold, fontSize: 16))
+                  ),
               ],
             ),
-            const SizedBox(height: 30),
-            Expanded(child: Center(child: _buildQuizArea())),
-            
-            if (!loading && questions.isNotEmpty && questionsRemaining > 0)
-              Padding(padding: const EdgeInsets.only(top: 20.0), child: Text("$questionsRemaining questions remaining", style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w600))),
-            if (!loading && questions.isNotEmpty && questionsRemaining == 0)
-              const Padding(padding: EdgeInsets.only(top: 20.0), child: Text("Quiz Completed! 🎉 +50 XP", style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold, fontSize: 16))),
-          ],
-        ),
-      ),
+          ),
+        );
+      }
     );
   }
 }

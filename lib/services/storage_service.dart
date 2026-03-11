@@ -3,6 +3,33 @@ import 'package:hive_flutter/hive_flutter.dart';
 class StorageService {
   static final userBox = Hive.box("userBox");
 
+  // --- THEME SETTINGS ---
+  static String getThemeMode() {
+    return userBox.get("themeMode", defaultValue: "system"); // 'system', 'light', or 'dark'
+  }
+
+  static void setThemeMode(String mode) {
+    userBox.put("themeMode", mode);
+  }
+
+  // --- AI Settings (Hybrid Mode) ---
+  static bool isOnlineMode() {
+    return userBox.get("onlineMode", defaultValue: true);
+  }
+
+  static void setOnlineMode(bool isOnline) {
+    userBox.put("onlineMode", isOnline);
+  }
+
+  // --- Language Settings (Translation) ---
+  static String getLanguage() {
+    return userBox.get("language", defaultValue: "English");
+  }
+
+  static void setLanguage(String lang) {
+    userBox.put("language", lang);
+  }
+
   // --- Onboarding & Auth Flags ---
   static bool isOnboardingComplete() {
     return userBox.get("onboardingComplete", defaultValue: false);
@@ -72,26 +99,21 @@ class StorageService {
 
   // --- RECENT ACTIVITY TRACKER ---
   static void addRecentActivity(String title, String subtitle, String iconType) {
-    // Retrieve current list
     List<dynamic> currentList = userBox.get("recentActivities", defaultValue: []);
     
-    // Convert to a strongly typed list of maps
     List<Map<String, dynamic>> activities = List<Map<String, dynamic>>.from(
         currentList.map((e) => Map<String, dynamic>.from(e as Map)));
 
-    // Insert new activity at the top
     activities.insert(0, {
       "title": title,
       "subtitle": subtitle,
       "iconType": iconType,
     });
 
-    // Keep only the 5 most recent activities so it doesn't clutter
     if (activities.length > 5) {
       activities = activities.sublist(0, 5);
     }
     
-    // Save back to Hive
     userBox.put("recentActivities", activities);
   }
 

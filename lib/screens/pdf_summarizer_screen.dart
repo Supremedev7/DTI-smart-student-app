@@ -1,10 +1,16 @@
-import 'dart:io';
+import 'dart:io' show File, Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+
 import '../services/ai_service.dart';
 import '../services/storage_service.dart';
-
+import '../services/translation_service.dart';
+import '../utils/app_strings.dart';
 import 'flashcard_screen.dart';
 import 'quiz_screen.dart';
 
@@ -20,14 +26,14 @@ class _PdfSummarizerScreenState extends State<PdfSummarizerScreen> {
   String summary = "";
   bool loading = false;
   String loadingStatus = "";
-  String currentFileName = "Custom Notes"; // Track the file name
+
+  bool get _isOcrSupported {
+    if (kIsWeb) return false;
+    return Platform.isAndroid || Platform.isIOS;
+  }
 
   Future<void> pickAndExtractPDF() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ["pdf"],
-    );
-
+    final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ["pdf"]);
     if (result == null) return;
 
     setState(() {
@@ -38,209 +44,240 @@ class _PdfSummarizerScreenState extends State<PdfSummarizerScreen> {
 
     try {
       final path = result.files.single.path!;
-      currentFileName = result.files.single.name; // Save the file name
-      
       final PdfDocument document = PdfDocument(inputBytes: File(path).readAsBytesSync());
-      
-      String extractedText = PdfTextExtractor(document)
-          .extractText(startPageIndex: 0, endPageIndex: document.pages.count > 3 ? 2 : document.pages.count - 1);
-      
+      String extractedText = PdfTextExtractor(document).extractText(
+          startPageIndex: 0, 
+          endPageIndex: document.pages.count > 3 ? 2 : document.pages.count - 1
+      );
       document.dispose();
 
       if (extractedText.trim().isEmpty) {
-        throw Exception("No readable text found in this PDF.");
+        throw Exception("No readable text found. If this is a scanned PDF, please use the 'Scan' button instead.");
       }
-
+      
       controller.text = extractedText;
-      await summarizeText(isFromPdf: true);
-
+      await summarizeText(isAutoProcess: true);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("PDF Error: ${e.toString()}")));
-      setState(() {
-        loading = false;
-        loadingStatus = "";
-      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: ${e.toString()}")));
+      setState(() { loading = false; loadingStatus = ""; });
     }
   }
 
-  Future<void> summarizeText({bool isFromPdf = false}) async {
-    if (controller.text.isEmpty && !isFromPdf) return;
+  Future<void> pickAndExtractImage() async {
+    if (!_isOcrSupported) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("OCR Scanning is only supported on Android/iOS devices. (Linux Bypass Active)")),
+      );
+      return;
+    }
+
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    
+    if (image == null) return;
 
     setState(() {
       loading = true;
-      loadingStatus = "Generating summary...";
+      loadingStatus = "Scanning handwriting...";
+      FocusScope.of(context).unfocus();
+    });
+
+    try {
+      final inputImage = InputImage.fromFilePath(image.path);
+      final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+      
+      final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
+      String extractedText = recognizedText.text;
+      
+      textRecognizer.close();
+
+      if (extractedText.trim().isEmpty) {
+        throw Exception("Could not read any text from this image.");
+      }
+
+      controller.text = extractedText;
+      await summarizeText(isAutoProcess: true);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Scan Error: ${e.toString()}")));
+      setState(() { loading = false; loadingStatus = ""; });
+    }
+  }
+
+  Future<void> summarizeText({bool isAutoProcess = false}) async {
+    if (controller.text.isEmpty && !isAutoProcess) return;
+
+    setState(() {
+      loading = true;
+      loadingStatus = AppStrings.get("generating");
       FocusScope.of(context).unfocus();
     });
 
     try {
       String result = await AIService.summarize(controller.text);
+      String targetLang = StorageService.getLanguage();
       
-      // --- LOG ACTIVITY & GIVE XP ---
-      StorageService.addXP(30);
-      if (isFromPdf) {
-         StorageService.incrementPdfs();
-         StorageService.addRecentActivity("Summarized PDF", currentFileName, "summary");
-      } else {
-         StorageService.addRecentActivity("Summarized Notes", "Custom Text", "summary");
+      if (targetLang != "English") {
+        setState(() => loadingStatus = "Translating...");
+        result = await TranslationService.translate(result, targetLang);
       }
-
-      setState(() {
-        summary = result;
-      });
+      
+      StorageService.addXP(30);
+      StorageService.addRecentActivity("Generated Summary", "Earned 30 XP", "summary");
+      setState(() => summary = result);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: ${e.toString()}")));
     } finally {
-      setState(() {
-        loading = false;
-        loadingStatus = "";
-      });
+      setState(() { loading = false; loadingStatus = ""; });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final backgroundColor = const Color(0xFFF8FAFC);
-    final primaryColor = const Color(0xFF10B981);
+    // --- THEME DYNAMICS ---
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = Theme.of(context).scaffoldBackgroundColor;
+    final cardColor = Theme.of(context).cardColor;
+    final titleColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final textColor = isDark ? Colors.grey.shade300 : const Color(0xFF334155);
+    final borderColor = isDark ? Colors.grey.shade800 : Colors.grey.shade200;
 
-    return Scaffold(
-      backgroundColor: backgroundColor,
-      appBar: AppBar(
-        title: const Text("Summarizer", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          physics: const BouncingScrollPhysics(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(
-                controller: controller,
-                maxLines: 4,
-                decoration: InputDecoration(
-                  hintText: "Paste your study notes or upload a PDF to get a quick summary...",
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                  contentPadding: const EdgeInsets.all(16),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
+    return ValueListenableBuilder(
+      valueListenable: Hive.box('userBox').listenable(),
+      builder: (context, box, child) {
+        return Scaffold(
+          backgroundColor: bgColor, // <-- DYNAMIC BACKGROUND
+          appBar: AppBar(
+            title: Text(AppStrings.get("summarizer"), style: TextStyle(fontWeight: FontWeight.bold, color: titleColor)),
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            iconTheme: IconThemeData(color: titleColor),
+          ),
+          body: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    flex: 1,
-                    child: OutlinedButton.icon(
-                      onPressed: loading ? null : pickAndExtractPDF,
-                      icon: const Icon(Icons.picture_as_pdf_rounded, color: Color(0xFFEF4444)),
-                      label: const Text("PDF"),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        foregroundColor: Colors.black87,
-                        side: BorderSide(color: Colors.grey.shade300),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        backgroundColor: Colors.white,
-                      ),
+                  TextField(
+                    controller: controller,
+                    maxLines: 4,
+                    style: TextStyle(color: textColor), // Dynamic text color
+                    decoration: InputDecoration(
+                      hintText: AppStrings.get("paste_notes"), 
+                      hintStyle: TextStyle(color: Colors.grey.shade500),
+                      filled: true,
+                      fillColor: cardColor, // <-- DYNAMIC CARD COLOR
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                      contentPadding: const EdgeInsets.all(16),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: ElevatedButton.icon(
-                      onPressed: loading ? null : () => summarizeText(),
-                      icon: loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.auto_awesome),
-                      label: Text(loading ? loadingStatus : "Summarize"),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        backgroundColor: primaryColor,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 32),
-              
-              if (summary.isNotEmpty && !loading) ...[
-                const Text("Key Takeaways", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                const SizedBox(height: 12),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.grey.shade200),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 5))],
-                  ),
-                  child: SelectableText(summary, style: const TextStyle(fontSize: 15, color: Color(0xFF334155), height: 1.6)),
-                ),
-                const SizedBox(height: 24),
-                const Text("Next Steps", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.push(context, MaterialPageRoute(builder: (context) => FlashcardScreen(initialText: controller.text)));
-                        },
-                        icon: const Icon(Icons.style_rounded),
-                        label: const Text("Flashcards"),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFF59E0B),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  const SizedBox(height: 16),
+                  
+                  // Buttons Row
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 1,
+                        child: OutlinedButton.icon(
+                          onPressed: loading ? null : pickAndExtractPDF,
+                          icon: const Icon(Icons.picture_as_pdf_rounded, color: Color(0xFFEF4444), size: 18),
+                          label: Text("PDF", style: TextStyle(color: titleColor)), // Match text to theme
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14), 
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), 
+                            backgroundColor: cardColor, // <-- DYNAMIC CARD COLOR
+                            side: BorderSide(color: borderColor)
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.push(context, MaterialPageRoute(builder: (context) => QuizScreen(initialText: controller.text)));
-                        },
-                        icon: const Icon(Icons.quiz_rounded),
-                        label: const Text("Take Quiz"),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFEC4899),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 1,
+                        child: OutlinedButton.icon(
+                          onPressed: loading ? null : pickAndExtractImage,
+                          icon: const Icon(Icons.document_scanner_rounded, color: Color(0xFF3B82F6), size: 18),
+                          label: Text("Scan", style: TextStyle(color: titleColor)), // Match text to theme
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14), 
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), 
+                            backgroundColor: cardColor, // <-- DYNAMIC CARD COLOR
+                            side: BorderSide(color: borderColor)
+                          ),
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton.icon(
+                          onPressed: loading ? null : () => summarizeText(),
+                          icon: loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.auto_awesome, size: 18),
+                          label: Text(loading ? "..." : AppStrings.get("summarize_btn")), 
+                          style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), backgroundColor: const Color(0xFF10B981), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
+                  
+                  if (summary.isNotEmpty && !loading) ...[
+                    Text(AppStrings.get("key_takeaways"), style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: titleColor)), 
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: cardColor, // <-- DYNAMIC CARD COLOR
+                        borderRadius: BorderRadius.circular(20), 
+                        border: Border.all(color: borderColor)
+                      ),
+                      child: SelectableText(summary, style: TextStyle(fontSize: 15, color: textColor, height: 1.6)),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-              ],
-              
-              if (summary.isEmpty && !loading)
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 60.0),
-                    child: Column(
+                    const SizedBox(height: 24),
+                    Text(AppStrings.get("next_steps"), style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: titleColor)), 
+                    const SizedBox(height: 12),
+                    Row(
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), shape: BoxShape.circle),
-                          child: Icon(Icons.document_scanner_rounded, size: 60, color: primaryColor.withOpacity(0.5)),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => FlashcardScreen(initialText: controller.text))),
+                            icon: const Icon(Icons.style_rounded),
+                            label: Text(AppStrings.get("flashcards")), 
+                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF59E0B), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                          ),
                         ),
-                        const SizedBox(height: 20),
-                        Text("Ready to summarize", style: TextStyle(color: Colors.grey.shade500, fontSize: 18, fontWeight: FontWeight.w500)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => QuizScreen(initialText: controller.text))),
+                            icon: const Icon(Icons.quiz_rounded),
+                            label: Text(AppStrings.get("take_quiz")), 
+                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEC4899), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                          ),
+                        ),
                       ],
                     ),
-                  ),
-                ),
-            ],
+                  ],
+                  
+                  if (summary.isEmpty && !loading)
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 60.0),
+                        child: Column(
+                          children: [
+                            Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: const Color(0xFF10B981).withOpacity(0.1), shape: BoxShape.circle), child: Icon(Icons.document_scanner_rounded, size: 60, color: const Color(0xFF10B981).withOpacity(0.5))),
+                            const SizedBox(height: 20),
+                            Text(AppStrings.get("ready_to_summarize"), style: TextStyle(color: Colors.grey.shade500, fontSize: 18, fontWeight: FontWeight.w500)), 
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      }
     );
   }
 }
