@@ -57,3 +57,30 @@ Fully localized in 4 languages:
 ```bash
 git clone [https://github.com/Supremedev7/DTI-smart-student-app.git]
 cd DTI-smart-student-app
+```
+3. Setup Environment Variables
+Create a .env file in the root directory:
+
+Code snippet
+GROQ_API_KEY=your_groq_api_key_here
+4. Install Dependencies
+Bash
+flutter pub get
+5. Run the App
+Bash
+flutter run
+📂 Project Structure
+Plaintext
+lib/
+├── screens/      # All UI pages (Home, Profile, Settings, Study Tools)
+├── services/     # AI Logic, Storage (Hive), and Translation services
+├── utils/        # Localization strings and theme constants
+├── widgets/      # Reusable components like Quiz cards and Flashcards
+└── main.dart     # App entry point and global theme configuration
+🛡️ Privacy & Security
+Local-First: All study stats, names, and emails are stored locally on your device using Hive encryption.
+
+Offline Support: Text analysis can be performed entirely on-device to ensure your notes never leave your phone unless Cloud AI is explicitly enabled.
+
+📝 License
+This project is licensed under the MIT License. Feel free to use it for your own educational projects!
