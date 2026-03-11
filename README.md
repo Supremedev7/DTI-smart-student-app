@@ -55,5 +55,5 @@ Fully localized in 4 languages:
 
 ### 2. Clone the Repository
 ```bash
-git clone [https://github.com/yourusername/smart-student-assistant.git](https://github.com/yourusername/smart-student-assistant.git)
-cd smart-student-assistant
+git clone [https://github.com/Supremedev7/DTI-smart-student-app.git]
+cd DTI-smart-student-app
