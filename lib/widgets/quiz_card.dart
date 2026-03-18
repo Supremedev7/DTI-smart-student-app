@@ -4,12 +4,14 @@ class QuizCard extends StatefulWidget {
   final String question;
   final List<String> options;
   final int correctIndex;
+  final Function(bool isCorrect) onAnswered; 
 
   const QuizCard({
     super.key,
     required this.question,
     required this.options,
     required this.correctIndex,
+    required this.onAnswered,
   });
 
   @override
@@ -21,11 +23,14 @@ class _QuizCardState extends State<QuizCard> {
   bool isCorrect = false;
 
   void _checkAnswer(int index) {
-    if (selectedIndex != null) return;
+    if (selectedIndex != null) return; // Prevent changing answer
+    
     setState(() {
       selectedIndex = index;
       isCorrect = index == widget.correctIndex;
     });
+    
+    widget.onAnswered(isCorrect);
   }
 
   @override
@@ -36,8 +41,7 @@ class _QuizCardState extends State<QuizCard> {
     final optionTextColor = isDark ? Colors.grey.shade300 : const Color(0xFF334155);
 
     return Container(
-      width: 320,
-      height: 480,
+      width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: cardColor,
@@ -50,69 +54,90 @@ class _QuizCardState extends State<QuizCard> {
           )
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: const Color(0xFFEC4899).withOpacity(0.1), shape: BoxShape.circle),
-                child: const Icon(Icons.help_outline, color: Color(0xFFEC4899), size: 20),
-              ),
-              const SizedBox(width: 12),
-              const Text("QUESTION", style: TextStyle(color: Color(0xFFEC4899), fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.2)),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            widget.question,
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor, height: 1.4),
-          ),
-          const Spacer(),
-          ...List.generate(widget.options.length, (index) {
-            bool isSelected = selectedIndex == index;
-            bool isThisCorrect = index == widget.correctIndex;
-            
-            Color itemColor = isDark ? Colors.grey.shade800 : Colors.grey.shade100;
-            if (selectedIndex != null) {
-              if (isThisCorrect) itemColor = const Color(0xFF10B981).withOpacity(0.2);
-              else if (isSelected) itemColor = Colors.red.withOpacity(0.1);
-            }
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min, 
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: const Color(0xFFEC4899).withOpacity(0.1), shape: BoxShape.circle),
+                  child: const Icon(Icons.help_outline, color: Color(0xFFEC4899), size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Text("QUESTION", style: TextStyle(color: Color(0xFFEC4899), fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.2)),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              widget.question,
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor, height: 1.4),
+            ),
+            const SizedBox(height: 24), 
+            ...List.generate(widget.options.length, (index) {
+              bool isSelected = selectedIndex == index;
+              bool isThisCorrect = index == widget.correctIndex;
+              
+              Color itemColor = isDark ? Colors.grey.shade800 : Colors.grey.shade100;
+              if (selectedIndex != null) {
+                if (isThisCorrect) {
+                  itemColor = const Color(0xFF10B981).withOpacity(0.2);
+                } else if (isSelected) itemColor = Colors.red.withOpacity(0.1);
+              }
 
-            return GestureDetector(
-              onTap: () => _checkAnswer(index),
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: itemColor,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: selectedIndex != null && isThisCorrect 
-                      ? const Color(0xFF10B981) 
-                      : (isSelected && !isCorrect ? Colors.red : Colors.transparent),
-                    width: 2
+              return GestureDetector(
+                onTap: () => _checkAnswer(index),
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: itemColor,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: selectedIndex != null && isThisCorrect 
+                        ? const Color(0xFF10B981) 
+                        : (isSelected && !isCorrect ? Colors.red : Colors.transparent),
+                      width: 2
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Text(String.fromCharCode(65 + index), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFEC4899))),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          widget.options[index], 
+                          style: TextStyle(fontWeight: FontWeight.w500, color: optionTextColor)
+                        )
+                      ),
+                      if (selectedIndex != null && isThisCorrect) const Icon(Icons.check_circle, color: Color(0xFF10B981), size: 20),
+                      if (isSelected && !isCorrect) const Icon(Icons.cancel, color: Colors.red, size: 20),
+                    ],
                   ),
                 ),
-                child: Row(
-                  children: [
-                    Text(String.fromCharCode(65 + index), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFEC4899))),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        widget.options[index], 
-                        style: TextStyle(fontWeight: FontWeight.w500, color: optionTextColor)
-                      )
-                    ),
-                    if (selectedIndex != null && isThisCorrect) const Icon(Icons.check_circle, color: Color(0xFF10B981), size: 20),
-                    if (isSelected && !isCorrect) const Icon(Icons.cancel, color: Colors.red, size: 20),
-                  ],
+              );
+            }),
+            
+            // --- UX ENHANCEMENT: Prompt user to swipe after answering ---
+            if (selectedIndex != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 16.0),
+                child: Center(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text("Swipe to continue", style: TextStyle(color: Colors.grey.shade500, fontStyle: FontStyle.italic, fontWeight: FontWeight.w500)),
+                      const SizedBox(width: 4),
+                      Icon(Icons.arrow_forward_rounded, color: Colors.grey.shade500, size: 16),
+                    ],
+                  ),
                 ),
-              ),
-            );
-          }),
-        ],
+              )
+          ],
+        ),
       ),
     );
   }

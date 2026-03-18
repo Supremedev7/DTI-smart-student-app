@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../services/storage_service.dart';
 import '../services/translation_service.dart';
+import '../services/notification_service.dart';
 import '../utils/app_strings.dart';
 import 'onboarding_screen.dart';
-import 'theme_screen.dart'; // Ensure this is imported
+import 'theme_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -15,7 +16,6 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool isDownloaded = true;
-  bool isDownloading = false;
 
   @override
   void initState() {
@@ -28,7 +28,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mounted) setState(() => isDownloaded = status);
   }
 
-  // Helper for Section Headers
   Widget _buildSectionHeader(String title, Color textColor) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10, top: 24),
@@ -39,7 +38,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // Helper for Setting Containers
   Widget _buildSettingGroup(List<Widget> children, Color cardColor) {
     return Container(
       decoration: BoxDecoration(
@@ -67,26 +65,86 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ValueListenableBuilder(
         valueListenable: Hive.box('userBox').listenable(),
         builder: (context, box, child) {
-          bool isOnline = StorageService.isOnlineMode();
           String currentLang = StorageService.getLanguage();
           String currentTheme = StorageService.getThemeMode();
+          bool isOnline = StorageService.isOnlineMode();
 
           return ListView(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             physics: const BouncingScrollPhysics(),
             children: [
-              // --- AI & LANGUAGE ---
-              _buildSectionHeader(AppStrings.get("generation_mode"), textColor),
+              // --- AI CONNECTIVITY ---
+              _buildSectionHeader("AI Connectivity", textColor),
               _buildSettingGroup([
                 SwitchListTile(
-                  title: Text(AppStrings.get("cloud_ai"), style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text(isOnline ? AppStrings.get("cloud_ai_sub") : AppStrings.get("offline_ai_sub"), style: const TextStyle(fontSize: 12)),
+                  secondary: Icon(isOnline ? Icons.cloud_done_rounded : Icons.cloud_off_rounded, color: isOnline ? const Color(0xFF10B981) : Colors.grey),
+                  title: const Text("Cloud AI Mode", style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text(isOnline ? "Using Groq for advanced generation" : "Using pure-Dart Statistical NLP", style: const TextStyle(fontSize: 12)),
                   value: isOnline,
-                  activeColor: const Color(0xFF4F46E5),
                   onChanged: (val) => StorageService.setOnlineMode(val),
                 ),
+                
                 const Divider(height: 1),
+                
+                // --- THE NEW STATISTICAL ENGINE INFO ---
+                const ListTile(
+                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  leading: Icon(Icons.bolt_rounded, color: Color(0xFF8B5CF6), size: 32),
+                  title: Text("Statistical Offline Engine", style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text("Built-in. Instant vector math. Zero downloads required.", style: TextStyle(fontSize: 12)),
+                  trailing: Icon(Icons.check_circle_rounded, color: Color(0xFF10B981)), // Always ready!
+                ),
+              ], cardColor),
+
+              // --- NOTIFICATIONS ---
+              _buildSectionHeader(AppStrings.get("notifications"), textColor),
+              _buildSettingGroup([
+                SwitchListTile(
+                  secondary: const Icon(Icons.notifications_active_rounded, color: Color(0xFFF59E0B)),
+                  title: Text(AppStrings.get("study_reminders"), style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text(AppStrings.get("reminders_sub"), style: const TextStyle(fontSize: 12)),
+                  value: StorageService.getStudyReminders(),
+                  onChanged: (val) async {
+                    StorageService.setStudyReminders(val);
+                    if (val) {
+                      await NotificationService.scheduleDailyReminder();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Daily study reminders set for 6:00 PM"))
+                        );
+                      }
+                    } else {
+                      await NotificationService.cancelAll();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Study reminders turned off"))
+                        );
+                      }
+                    }
+                    setState(() {}); // Force UI update for the test button
+                  },
+                ),
+                
+                // TEST NOTIFICATION BUTTON (Only visible if reminders are ON)
+                if (StorageService.getStudyReminders()) ...[
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.send_to_mobile_rounded, color: Color(0xFF4F46E5)),
+                    title: const Text("Test Notification System", style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: const Text("Sends a test alert to your phone immediately", style: TextStyle(fontSize: 12)),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () async {
+                      await NotificationService.testNotification();
+                    },
+                  ),
+                ]
+              ], cardColor),
+
+              // --- LANGUAGE ---
+              _buildSectionHeader("Language", textColor),
+              _buildSettingGroup([
                 ListTile(
+                  leading: const Icon(Icons.language_rounded, color: Color(0xFF4F46E5)),
                   title: Text(AppStrings.get("study_language"), style: const TextStyle(fontWeight: FontWeight.bold)),
                   trailing: Text(currentLang, style: const TextStyle(color: Color(0xFF4F46E5), fontWeight: FontWeight.bold)),
                   onTap: () => _showLanguagePicker(currentLang),
@@ -105,18 +163,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ], cardColor),
 
-              // --- NOTIFICATIONS ---
-              _buildSectionHeader(AppStrings.get("notifications"), textColor),
-              _buildSettingGroup([
-                SwitchListTile(
-                  secondary: const Icon(Icons.notifications_active_outlined, color: Color(0xFFF59E0B)),
-                  title: Text(AppStrings.get("study_reminders"), style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text(AppStrings.get("reminders_sub"), style: const TextStyle(fontSize: 12)),
-                  value: box.get("remindersEnabled", defaultValue: true),
-                  onChanged: (val) => box.put("remindersEnabled", val),
-                ),
-              ], cardColor),
-
               // --- ACCOUNT & DATA ---
               _buildSectionHeader(AppStrings.get("account"), textColor),
               _buildSettingGroup([
@@ -129,31 +175,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ListTile(
                   leading: const Icon(Icons.logout_rounded, color: Colors.grey),
                   title: Text(AppStrings.get("logout"), style: const TextStyle(fontWeight: FontWeight.bold)),
-                  onTap: () {
+                  onTap: () async {
+                    await NotificationService.cancelAll(); // Stop notifications on logout
                     StorageService.logout();
-                    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const OnboardingScreen()), (r) => false);
+                    if (mounted) {
+                      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const OnboardingScreen()), (r) => false);
+                    }
                   },
                 ),
               ], cardColor),
 
-              // --- HELP & SUPPORT ---
-              _buildSectionHeader(AppStrings.get("help_support"), textColor),
-              _buildSettingGroup([
-                ListTile(
-                  title: Text(AppStrings.get("send_feedback")),
-                  trailing: const Icon(Icons.open_in_new_rounded, size: 18),
-                  onTap: () {}, // Link to email or form
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  title: Text(AppStrings.get("privacy_policy")),
-                  onTap: () {},
-                ),
-              ], cardColor),
-
               const SizedBox(height: 40),
-              Center(child: Text("v1.0.0", style: TextStyle(color: textColor.withOpacity(0.3), fontSize: 12))),
-              const SizedBox(height: 20),
             ],
           );
         },
@@ -191,10 +223,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         content: Text(AppStrings.get("clear_data_desc")),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: Text(AppStrings.get("cancel"))),
-          TextButton(onPressed: () {
-            Hive.box('userBox').clear();
-            Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const OnboardingScreen()), (r) => false);
-          }, child: const Text("Reset App", style: TextStyle(color: Colors.red))),
+          TextButton(
+            onPressed: () async {
+              await NotificationService.cancelAll(); // Clear alarms
+              await Hive.box('userBox').clear(); // Wipe database
+              if (mounted) {
+                Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const OnboardingScreen()), (r) => false);
+              }
+            }, 
+            child: const Text("Reset App", style: TextStyle(color: Colors.red))
+          ),
         ],
       ),
     );

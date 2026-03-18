@@ -2,22 +2,29 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart'; 
 
-import 'screens/main_navigation.dart';
-import 'screens/onboarding_screen.dart';
 import 'services/storage_service.dart';
+import 'services/notification_service.dart';
+import 'screens/splash_screen.dart'; // <-- IMPORT SPLASH SCREEN
 
 void main() async {
   // 1. Ensure Flutter bindings are initialized before async calls
   WidgetsFlutterBinding.ensureInitialized();
   
-  // 2. Load the .env file to initialize the Groq API Key securely
-  await dotenv.load(fileName: ".env");
+  // 2. Initialize Local Notifications
+  await NotificationService.init();
   
-  // 3. Initialize Hive local storage for settings, XP, and profile data
+  // 3. Safely load .env for the Groq API Key
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    debugPrint("Warning: .env file not found. Cloud AI will fail without an API key.");
+  }
+  
+  // 4. Initialize Hive local storage for settings, XP, and profile data
   await Hive.initFlutter();
   await Hive.openBox('userBox');
 
-  // 4. Run the app
+  // 5. Run the app
   runApp(const SmartStudentAssistant());
 }
 
@@ -26,17 +33,11 @@ class SmartStudentAssistant extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Wrap the entire app in a ValueListenableBuilder so it reacts to Theme changes
+    // Wrap the entire app in a ValueListenableBuilder so it reacts to Theme changes dynamically
     return ValueListenableBuilder(
       valueListenable: Hive.box('userBox').listenable(),
       builder: (context, box, child) {
         
-        // Check if the user has already onboarded and logged in
-        Widget initialScreen = const OnboardingScreen();
-        if (StorageService.isOnboardingComplete() && StorageService.isLoggedIn()) {
-          initialScreen = const MainNavigation();
-        }
-
         // Determine the current theme mode from StorageService
         String themeStr = StorageService.getThemeMode();
         ThemeMode currentThemeMode = ThemeMode.system;
@@ -46,7 +47,7 @@ class SmartStudentAssistant extends StatelessWidget {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
           title: "Smart Student Assistant",
-          themeMode: currentThemeMode, // Applies the selected mode dynamically
+          themeMode: currentThemeMode, 
           
           // --- LIGHT THEME ---
           theme: ThemeData(
@@ -92,7 +93,8 @@ class SmartStudentAssistant extends StatelessWidget {
             ),
           ),
           
-          home: initialScreen,
+          // --- THE NEW ENTRY POINT ---
+          home: const SplashScreen(), 
         );
       }
     );

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:flutter_heatmap_calendar/flutter_heatmap_calendar.dart';
+
 import '../services/storage_service.dart';
 import 'settings_screen.dart';
 import '../utils/app_strings.dart'; 
@@ -30,14 +32,21 @@ class ProfileScreen extends StatelessWidget {
         final quizzes = StorageService.getQuizzesCompleted();
         final pdfs = StorageService.getPdfsStored();
         final recents = StorageService.getRecentActivities();
+        
+        // Fetch the new Daily XP Map for the Heatmap
+        final Map<DateTime, int> heatmapData = StorageService.getHeatmapData();
 
         // 2. Calculate Gamification logic
         int currentLevel = (xp / 100).floor() + 1;
         int xpForNextLevel = currentLevel * 100;
         double levelProgress = (xp % 100) / 100;
+        
+        // 3. Setup Heatmap constraints (11 weeks = 77 days = ~11 columns)
+        final DateTime endDate = DateTime.now();
+        final DateTime startDate = endDate.subtract(const Duration(days: 77));
 
         return Scaffold(
-          backgroundColor: bgColor, // <-- DYNAMIC BACKGROUND
+          backgroundColor: bgColor, 
           appBar: AppBar(
             title: Text(AppStrings.get("profile"), style: TextStyle(fontWeight: FontWeight.bold, color: sectionTitleColor)),
             backgroundColor: Colors.transparent,
@@ -67,6 +76,58 @@ class ProfileScreen extends StatelessWidget {
 
                   // --- Gamification Section (Streak & Level) ---
                   _buildGamificationCard(primaryColor, currentLevel, xp, xpForNextLevel, levelProgress, streak),
+                  const SizedBox(height: 32),
+
+                  // --- GITHUB STYLE STUDY HEATMAP ---
+                  Text(
+                    "Study Consistency",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: sectionTitleColor),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: cardColor,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 5))],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("Daily XP Earned", style: TextStyle(fontSize: 12, color: subtitleColor, fontWeight: FontWeight.w600, letterSpacing: 1.2)),
+                        const SizedBox(height: 16),
+                        
+                        // CHANGED TO SMALL, DATELESS HEATMAP
+                        HeatMap(
+                          datasets: heatmapData,
+                          startDate: startDate,
+                          endDate: endDate,
+                          colorMode: ColorMode.opacity,
+                          showText: false, // Removes the dates inside the boxes
+                          scrollable: true,
+                          showColorTip: false,
+                          size: 14, // Very small boxes!
+                          margin: const EdgeInsets.all(2), // Tighter spacing
+                          textColor: subtitleColor,
+                          defaultColor: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
+                          colorsets: const {
+                            1: Color(0xFFD1FAE5),   // Lightest Green
+                            20: Color(0xFF34D399),  // Light Green
+                            50: Color(0xFF10B981),  // Normal Green
+                            100: Color(0xFF059669), // Dark Green
+                            200: Color(0xFF065F46), // Darkest Green
+                          },
+                          onClick: (value) {
+                            int earned = heatmapData[value] ?? 0;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text("$earned XP earned on ${value.toString().split(' ')[0]}"))
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
                   const SizedBox(height: 32),
 
                   // --- Stats Grid ---
@@ -112,6 +173,9 @@ class ProfileScreen extends StatelessWidget {
                       } else if (item["iconType"] == "quiz") {
                         icon = Icons.quiz_rounded;
                         color = const Color(0xFFEC4899);
+                      } else if (item["iconType"] == "timer") {
+                        icon = Icons.timer_rounded;
+                        color = const Color(0xFFEF4444);
                       }
 
                       return Padding(
@@ -164,7 +228,6 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  // Note: Gamification card uses a gradient with white text, which looks great in both light and dark modes!
   Widget _buildGamificationCard(Color themeColor, int currentLevel, int xp, int xpForNextLevel, double levelProgress, int streak) {
     return Container(
       width: double.infinity,
@@ -238,7 +301,7 @@ class ProfileScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: cardColor, // <-- DYNAMIC CARD COLOR
+        color: cardColor, 
         borderRadius: BorderRadius.circular(20),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 5))],
       ),
@@ -262,7 +325,7 @@ class ProfileScreen extends StatelessWidget {
   Widget _buildActivityItem(String title, String subtitle, IconData icon, Color iconColor, Color cardColor, Color titleColor, Color subtitleColor) {
     return Container(
       decoration: BoxDecoration(
-        color: cardColor, // <-- DYNAMIC CARD COLOR
+        color: cardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
